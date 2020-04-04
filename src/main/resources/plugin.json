@@ -1,0 +1,5 @@
+{
+  "Main": "com.github.pseudoresonance.resonantbot.leagueoflegends.LeagueOfLegends",
+  "Name": "${project.name}",
+  "Version": "${revision}"
+}

@@ -1,0 +1,15 @@
+#en-US lang file
+
+leagueoflegends:
+  summoner: "Summoner"
+  invalidSummoner: "Invalid summoner!"
+  summonerinfo: "{$1$}: Level {$2$}"
+  updated: "Updated: {$1$}"
+  tier: "Tier: {$1$}"
+  winlossratio: "Wins: {$1$} Losses: {$2$} Ratio: {$3$}%"
+  veteran: "Veteran"
+  inactive: "Inactive"
+  freshBlood: "Fresh Blood"
+  hotStreak: "Hot Streak"
+  unranked: "Unranked"
+  lolCommandDescription: "Displays League of Legends info"

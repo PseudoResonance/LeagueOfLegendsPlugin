@@ -1,0 +1,15 @@
+#ja-JP lang file
+
+leagueoflegends:
+  summoner: "サモナー"
+  invalidSummoner: "サモナーは無効です！"
+  summonerinfo: "{$1$}：　レブル　{$2$}"
+  updated: "最終更新：　{$1$}"
+  tier: "ティア：　{$1$}"
+  winlossratio: "勝ち数：　{$1$}　敗北数：　{$2$}　比率：　{$3$}％"
+  veteran: "ベテラン"
+  inactive: "低調"
+  freshBlood: "新鮮な血"
+  hotStreak: "絶好調"
+  unranked: "ランクなし"
+  lolCommandDescription: "リーグ・オブ・レジェンズの情報を表示する"
