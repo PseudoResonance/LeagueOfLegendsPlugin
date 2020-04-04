@@ -15,10 +15,12 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map.Entry;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 
 import javax.imageio.ImageIO;
@@ -55,12 +57,12 @@ public class LeagueOfLegendsCommand {
 
 	private final static DecimalFormat df = new DecimalFormat("#.#");
 
-	private static HashMap<String, ExpiryHolder<Summoner>> summonerNameCache = new HashMap<String, ExpiryHolder<Summoner>>();
-	private static HashMap<String, ExpiryHolder<Summoner>> summonerIdCache = new HashMap<String, ExpiryHolder<Summoner>>();
-	private static HashMap<String, ExpiryHolder<Summoner>> summonerAccountIdCache = new HashMap<String, ExpiryHolder<Summoner>>();
-	private static HashMap<String, ExpiryHolder<Summoner>> summonerPuuidCache = new HashMap<String, ExpiryHolder<Summoner>>();
+	private static ConcurrentHashMap<String, ExpiryHolder<Summoner>> summonerNameCache = new ConcurrentHashMap<String, ExpiryHolder<Summoner>>();
+	private static ConcurrentHashMap<String, ExpiryHolder<Summoner>> summonerIdCache = new ConcurrentHashMap<String, ExpiryHolder<Summoner>>();
+	private static ConcurrentHashMap<String, ExpiryHolder<Summoner>> summonerAccountIdCache = new ConcurrentHashMap<String, ExpiryHolder<Summoner>>();
+	private static ConcurrentHashMap<String, ExpiryHolder<Summoner>> summonerPuuidCache = new ConcurrentHashMap<String, ExpiryHolder<Summoner>>();
 
-	private static HashMap<String, ExpiryHolder<Set<LeagueEntry>>> summonerLeagueEntriesCache = new HashMap<String, ExpiryHolder<Set<LeagueEntry>>>();
+	private static ConcurrentHashMap<String, ExpiryHolder<Set<LeagueEntry>>> summonerLeagueEntriesCache = new ConcurrentHashMap<String, ExpiryHolder<Set<LeagueEntry>>>();
 
 	public static void setup(Plugin plugin) {
 		if (api == null) {
@@ -336,6 +338,21 @@ public class LeagueOfLegendsCommand {
 		} catch (IOException e) {
 			e.printStackTrace();
 			return null;
+		}
+	}
+	
+	public static void purge() {
+		Iterator<Entry<String, ExpiryHolder<Summoner>>> iter = summonerNameCache.entrySet().iterator();
+		while (iter.hasNext()) {
+			Entry<String, ExpiryHolder<Summoner>> n = iter.next();
+			if (n.getValue().isExpired()) {
+				Summoner s = n.getValue().getObject();
+				summonerIdCache.remove(s.getId());
+				summonerAccountIdCache.remove(s.getAccountId());
+				summonerPuuidCache.remove(s.getPuuid());
+				summonerLeagueEntriesCache.remove(s.getPuuid());
+				iter.remove();
+			}
 		}
 	}
 
