@@ -5,6 +5,9 @@ import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
@@ -48,7 +51,7 @@ import net.rithms.riot.constant.Platform;
 public class LeagueOfLegendsCommand {
 
 	private static final long SUMMONER_EXPIRY = 900000;
-	
+
 	private static CommandHandler cmd = null;
 	private static ApiConfig config = null;
 	private static RiotApi api = null;
@@ -63,6 +66,8 @@ public class LeagueOfLegendsCommand {
 	private static ConcurrentHashMap<String, ExpiryHolder<Summoner>> summonerPuuidCache = new ConcurrentHashMap<String, ExpiryHolder<Summoner>>();
 
 	private static ConcurrentHashMap<String, ExpiryHolder<Set<LeagueEntry>>> summonerLeagueEntriesCache = new ConcurrentHashMap<String, ExpiryHolder<Set<LeagueEntry>>>();
+
+	private static ConcurrentHashMap<String, String> summonerPictureCache = new ConcurrentHashMap<String, String>();
 
 	public static void setup(Plugin plugin) {
 		if (api == null) {
@@ -130,7 +135,7 @@ public class LeagueOfLegendsCommand {
 								name += args[i] + " ";
 							name = name.substring(0, name.length() - 1);
 						}
-						ExpiryHolder<Summoner> cachedSummoner = checkSummonerCache(name);
+						ExpiryHolder<Summoner> cachedSummoner = checkSummonerCache(name, platform);
 						Summoner summoner = null;
 						if (cachedSummoner == null || cachedSummoner.isExpired()) {
 							if (name.length() <= 16) {
@@ -140,7 +145,7 @@ public class LeagueOfLegendsCommand {
 							} else {
 								summoner = api.getSummonerByAccount(platform, name);
 							}
-							cachedSummoner = updateSummonerCache(summoner);
+							cachedSummoner = updateSummonerCache(summoner, platform);
 						} else
 							summoner = cachedSummoner.getObject();
 						ExpiryHolder<Set<LeagueEntry>> cachedLeagueEntries = checkSummonerLeagueEntriesCache(summoner.getPuuid());
@@ -202,11 +207,11 @@ public class LeagueOfLegendsCommand {
 		});
 		cmd.register(plugin);
 	}
-	
-	private static ExpiryHolder<Summoner> checkSummonerCache(String input) {
+
+	private static ExpiryHolder<Summoner> checkSummonerCache(String input, Platform platform) {
 		input = input.toLowerCase();
 		if (input.length() <= 16) {
-			return summonerNameCache.get(input);
+			return summonerNameCache.get(input + "#" + platform.getId());
 		} else if (input.length() == 78) {
 			return summonerPuuidCache.get(input);
 		} else {
@@ -216,13 +221,13 @@ public class LeagueOfLegendsCommand {
 			return test;
 		}
 	}
-	
+
 	private static ExpiryHolder<Set<LeagueEntry>> checkSummonerLeagueEntriesCache(String puuid) {
 		puuid = puuid.toLowerCase();
 		return summonerLeagueEntriesCache.get(puuid);
 	}
-	
-	private static ExpiryHolder<Summoner> updateSummonerCache(Summoner summoner) {
+
+	private static ExpiryHolder<Summoner> updateSummonerCache(Summoner summoner, Platform platform) {
 		String newName = summoner.getName().toLowerCase();
 		ExpiryHolder<Summoner> check = summonerPuuidCache.get(summoner.getPuuid());
 		if (check != null) {
@@ -231,13 +236,13 @@ public class LeagueOfLegendsCommand {
 				summonerNameCache.remove(oldName);
 		}
 		ExpiryHolder<Summoner> expiry = new ExpiryHolder<Summoner>(summoner, SUMMONER_EXPIRY);
-		summonerNameCache.put(newName, expiry);
+		summonerNameCache.put(newName + "#" + platform.getId(), expiry);
 		summonerIdCache.put(summoner.getId().toLowerCase(), expiry);
 		summonerAccountIdCache.put(summoner.getAccountId().toLowerCase(), expiry);
 		summonerPuuidCache.put(summoner.getPuuid().toLowerCase(), expiry);
 		return expiry;
 	}
-	
+
 	private static ExpiryHolder<Set<LeagueEntry>> updateSummonerLeagueEntriesCache(String puuid, long creation, Set<LeagueEntry> entries) {
 		ExpiryHolder<Set<LeagueEntry>> expiry = new ExpiryHolder<Set<LeagueEntry>>(entries, SUMMONER_EXPIRY);
 		expiry.setExpiry(creation, SUMMONER_EXPIRY);
@@ -292,9 +297,9 @@ public class LeagueOfLegendsCommand {
 			description = "`" + summoner.getAccountId() + "`\n" + description;
 			description += "\n" + lang.getMessage("leagueoflegends.tier", highestTier == null ? lang.getMessage("leagueoflegends.unranked") : WordUtils.capitalizeFully(highestTier.toString()) + (highestTier != LeagueTier.CHALLENGER && highestTier != LeagueTier.GRANDMASTER && highestTier != LeagueTier.MASTER ? " " + tierRank.toUpperCase() : ""));
 			embed.setDescription(description);
-			InputStream thumb = getProfilePicture(summoner, highestTier);
-			if (thumb == null) {
-				embed.setThumbnail("https://opgg-static.akamaized.net/images/profile_icons/profileIcon" + summoner.getProfileIconId() + ".jpg");
+			String url = getProfilePictureCache(summoner.getProfileIconId(), highestTier);
+			if (url != null) {
+				embed.setThumbnail(url);
 				try {
 					Message msg = placeholder.get();
 					msg.editMessage(embed.build()).override(true).queue();
@@ -302,26 +307,49 @@ public class LeagueOfLegendsCommand {
 					e.getChannel().sendMessage(embed.build()).queue();
 				}
 			} else {
-				try {
-					Message msg = placeholder.get();
-					msg.delete().complete();
-				} catch (NullPointerException | InterruptedException | ExecutionException e1) {
+				InputStream thumb = getProfilePicture(summoner, highestTier);
+				if (thumb == null) {
+					embed.setThumbnail("https://opgg-static.akamaized.net/images/profile_icons/profileIcon" + summoner.getProfileIconId() + ".jpg");
+					try {
+						Message msg = placeholder.get();
+						msg.editMessage(embed.build()).override(true).queue();
+					} catch (InterruptedException | ExecutionException e1) {
+						e.getChannel().sendMessage(embed.build()).queue();
+					}
+				} else {
+					try {
+						Message msg = placeholder.get();
+						msg.delete().complete();
+					} catch (NullPointerException | InterruptedException | ExecutionException e1) {
+					}
+					Message sent = e.getChannel().sendMessage(embed.build()).addFile(thumb, "thumb.png").complete();
+					summonerPictureCache.put((highestTier == null ? "" : highestTier.toString().toLowerCase()) + summoner.getProfileIconId(), sent.getAttachments().get(0).getUrl());
 				}
-				e.getChannel().sendMessage(embed.build()).addFile(thumb, "thumb.png").queue();
+				if (thumb != null)
+					thumb.close();
 			}
-			if (thumb != null)
-				thumb.close();
 		} catch (IOException e1) {
 			e1.printStackTrace();
 			ResonantBot.getBot().getLogger().error("Error overlaying border on profile picture!");
 		}
 	}
 
+	private static String getProfilePictureCache(int pictureId, LeagueTier tier) {
+		return summonerPictureCache.get((tier == null ? "" : tier.toString().toLowerCase()) + pictureId);
+	}
+
 	private static InputStream getProfilePicture(Summoner summoner, LeagueTier tier) {
-		if (tier == null)
-			return null;
+		File iconFile = new File(LeagueOfLegends.getPatchDataDirectory(), LeagueOfLegends.getPatchName() + File.separator + "img" + File.separator + "profileicon" + File.separator + summoner.getProfileIconId() + ".png");
+		if (tier == null) {
+			try {
+				return new FileInputStream(iconFile);
+			} catch (FileNotFoundException e) {
+				e.printStackTrace();
+				return null;
+			}
+		}
 		try {
-			BufferedImage icon = ImageIO.read(new URL("https://opgg-static.akamaized.net/images/profile_icons/profileIcon" + summoner.getProfileIconId() + ".jpg"));
+			BufferedImage icon = ImageIO.read(iconFile);
 			BufferedImage border = ImageIO.read(new URL("https://opgg-static.akamaized.net/images/borders2/" + tier.toString().toLowerCase() + ".png"));
 			BufferedImage combined = new BufferedImage(120, 120, BufferedImage.TYPE_INT_ARGB);
 			Graphics2D g = combined.createGraphics();
@@ -340,7 +368,7 @@ public class LeagueOfLegendsCommand {
 			return null;
 		}
 	}
-	
+
 	public static void purge() {
 		Iterator<Entry<String, ExpiryHolder<Summoner>>> iter = summonerNameCache.entrySet().iterator();
 		while (iter.hasNext()) {
@@ -369,36 +397,36 @@ public class LeagueOfLegendsCommand {
 			return id;
 		}
 	}
-	
+
 	private static class ExpiryHolder<T> {
-		
+
 		private T object;
 		private long creation;
 		private long expiry;
-		
+
 		public ExpiryHolder(T object, long expiry) {
 			this.object = object;
 			this.creation = System.currentTimeMillis();
 			this.expiry = creation + expiry;
 		}
-		
+
 		public void setExpiry(long creation, long expiry) {
 			this.creation = creation;
 			this.expiry = this.creation + expiry;
 		}
-		
+
 		public T getObject() {
 			return this.object;
 		}
-		
+
 		public long getCreation() {
 			return this.creation;
 		}
-		
+
 		public boolean isExpired() {
 			return System.currentTimeMillis() >= this.expiry;
 		}
-		
+
 	}
 
 }

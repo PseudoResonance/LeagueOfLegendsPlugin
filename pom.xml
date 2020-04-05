@@ -162,7 +162,7 @@
 		<dependency>
 			<groupId>io.github.pseudoresonance</groupId>
 			<artifactId>APIPlugin</artifactId>
-			<version>1.0</version>
+			<version>1.0.1</version>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>
