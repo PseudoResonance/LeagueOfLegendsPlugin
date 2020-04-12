@@ -11,5 +11,6 @@ leagueoflegends:
   inactive: "低調"
   freshBlood: "新鮮な血"
   hotStreak: "絶好調"
+  currentMatch: "現在の試合"
   unranked: "ランクなし"
   lolCommandDescription: "リーグ・オブ・レジェンズの情報を表示する"

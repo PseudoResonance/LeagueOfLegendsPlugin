@@ -8,7 +8,7 @@
 	<name>League of Legends</name>
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<revision>1.0.4</revision>
+		<revision>1.0.5</revision>
 	</properties>
 	<build>
 		<sourceDirectory>src/main/java</sourceDirectory>
@@ -172,7 +172,7 @@
 		<dependency>
 			<groupId>io.github.pseudoresonance</groupId>
 			<artifactId>ResonantBot</artifactId>
-			<version>1.1.1</version>
+			<version>1.2.0</version>
 			<scope>provided</scope>
 		</dependency>
 		<dependency>

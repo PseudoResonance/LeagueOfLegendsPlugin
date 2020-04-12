@@ -11,5 +11,6 @@ leagueoflegends:
   inactive: "Inactive"
   freshBlood: "Fresh Blood"
   hotStreak: "Hot Streak"
+  currentMatch: "Current Match"
   unranked: "Unranked"
   lolCommandDescription: "Displays League of Legends info"

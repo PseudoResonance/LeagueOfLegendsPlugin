@@ -41,11 +41,13 @@ import com.merakianalytics.orianna.datapipeline.riotapi.exceptions.RateLimitExce
 import com.merakianalytics.orianna.datapipeline.riotapi.exceptions.ServiceUnavailableException;
 import com.merakianalytics.orianna.datapipeline.riotapi.exceptions.UnauthorizedException;
 import com.merakianalytics.orianna.types.common.Division;
+import com.merakianalytics.orianna.types.common.GameType;
 import com.merakianalytics.orianna.types.common.Platform;
 import com.merakianalytics.orianna.types.common.Region;
 import com.merakianalytics.orianna.types.common.Tier;
 import com.merakianalytics.orianna.types.core.league.LeagueEntry;
 import com.merakianalytics.orianna.types.core.league.LeaguePositions;
+import com.merakianalytics.orianna.types.core.spectator.CurrentMatch;
 import com.merakianalytics.orianna.types.core.staticdata.ProfileIcon;
 import com.merakianalytics.orianna.types.core.summoner.Summoner;
 
@@ -70,6 +72,8 @@ public class LeagueOfLegendsCommand {
 
 	private static ConcurrentHashMap<String, ExpiryHolder<LeaguePositions>> summonerLeagueEntriesCache = new ConcurrentHashMap<String, ExpiryHolder<LeaguePositions>>();
 
+	private static ConcurrentHashMap<String, ExpiryHolder<CurrentMatch>> summonerCurrentMatchCache = new ConcurrentHashMap<String, ExpiryHolder<CurrentMatch>>();
+
 	private static ConcurrentHashMap<String, String> summonerPictureCache = new ConcurrentHashMap<String, String>();
 
 	public static void setup(Plugin plugin) {
@@ -79,7 +83,7 @@ public class LeagueOfLegendsCommand {
 			apiKey = key;
 			Orianna.setRiotAPIKey(key);
 		}
-		cmd = new CommandHandler("leagueoflegends", "leagueoflegends.lolCommandDescription");
+		cmd = new CommandHandler("leagueoflegends", "leagueoflegends.lolCommandDescription", "lol", "league");
 		cmd.registerSubcommand("apikey", (e, command, args) -> {
 			if (args.length > 0) {
 				e.getMessage().delete().queue();
@@ -148,8 +152,14 @@ public class LeagueOfLegendsCommand {
 							leagueEntries = Orianna.leaguePositionsForSummoner(summoner).get();
 							cachedLeagueEntries = updateSummonerLeagueEntriesCache(summoner.getPuuid(), cachedSummoner.getCreation(), leagueEntries);
 						}
+						ExpiryHolder<CurrentMatch> cachedCurrentMatch = checkSummonerCurrentMatchCache(summoner.getPuuid());
+						CurrentMatch currentMatch = null;
+						if (cachedCurrentMatch == null || cachedCurrentMatch.isExpired()) {
+							currentMatch = Orianna.currentMatchForSummoner(summoner).get();
+							cachedCurrentMatch = updateSummonerCurrentMatchCache(summoner.getPuuid(), cachedSummoner.getCreation(), currentMatch);
+						}
 						try {
-							sendSummonerInformation(e, cachedSummoner, platform, cachedLeagueEntries, placeholder);
+							sendSummonerInformation(e, cachedSummoner, platform, cachedLeagueEntries, cachedCurrentMatch, placeholder);
 						} catch (Exception e1) {
 							e1.printStackTrace();
 							String text = LanguageManager.getLanguage(e).getMessage("main.errorOccurred");
@@ -225,6 +235,11 @@ public class LeagueOfLegendsCommand {
 		return summonerLeagueEntriesCache.get(puuid);
 	}
 
+	private static ExpiryHolder<CurrentMatch> checkSummonerCurrentMatchCache(String puuid) {
+		puuid = puuid.toLowerCase();
+		return summonerCurrentMatchCache.get(puuid);
+	}
+
 	private static ExpiryHolder<Summoner> updateSummonerCache(Summoner summoner, Platform platform) {
 		String newName = summoner.getName().toLowerCase();
 		ExpiryHolder<Summoner> check = summonerPuuidCache.get(summoner.getPuuid());
@@ -248,6 +263,17 @@ public class LeagueOfLegendsCommand {
 		return expiry;
 	}
 
+	private static ExpiryHolder<CurrentMatch> updateSummonerCurrentMatchCache(String puuid, long creation, CurrentMatch match) {
+		if (match == null) {
+			summonerCurrentMatchCache.remove(puuid.toLowerCase());
+			return null;
+		}
+		ExpiryHolder<CurrentMatch> expiry = new ExpiryHolder<CurrentMatch>(match, SUMMONER_EXPIRY);
+		expiry.setExpiry(creation, SUMMONER_EXPIRY);
+		summonerCurrentMatchCache.put(puuid.toLowerCase(), expiry);
+		return expiry;
+	}
+
 	private static Platform getPlatformByName(String name) {
 		for (Platform platform : Platform.values()) {
 			if (platform.getTag().equalsIgnoreCase(name)) {
@@ -262,7 +288,7 @@ public class LeagueOfLegendsCommand {
 		throw new NoSuchElementException("Unknown platform name: " + name);
 	}
 
-	private static void sendSummonerInformation(MessageReceivedEvent e, ExpiryHolder<Summoner> summonerHolder, Platform platform, ExpiryHolder<LeaguePositions> leagueEntries, CompletableFuture<Message> placeholder) {
+	private static void sendSummonerInformation(MessageReceivedEvent e, ExpiryHolder<Summoner> summonerHolder, Platform platform, ExpiryHolder<LeaguePositions> leagueEntries, ExpiryHolder<CurrentMatch> currentMatch, CompletableFuture<Message> placeholder) {
 		try {
 			Summoner summoner = summonerHolder.getObject();
 			LeaguePositions leagues = leagueEntries.getObject();
@@ -288,6 +314,20 @@ public class LeagueOfLegendsCommand {
 				if (entry.isFreshBlood() || entry.isOnHotStreak() || entry.isInactive())
 					entryStats += "\n" + (entry.isInactive() ? " " + lang.getMessage("leagueoflegends.inactive") : "") + (entry.isFreshBlood() ? " " + lang.getMessage("leagueoflegends.freshBlood") : "") + (entry.isOnHotStreak() ? " " + lang.getMessage("leagueoflegends.hotStreak") : "");
 				embed.addField(WordUtils.capitalizeFully(entry.getQueue().getTag().replace('_', ' ')), entryStats, true);
+			}
+			if (currentMatch != null && currentMatch.getObject().exists()) {
+				CurrentMatch match = currentMatch.getObject();
+				GameType type = match.getType();
+				String matchStats = (type == GameType.MATCHED_GAME ? "" : WordUtils.capitalizeFully(type.toString().replace('_', ' ') + ": ")) + WordUtils.capitalizeFully(match.getQueue().getTag().replace('_', ' '));
+				LocalDateTime startTime = LocalDateTime.ofInstant(Instant.ofEpochMilli(match.getCreationTime().getMillis()), ZoneId.systemDefault());
+				LocalDateTime now = LocalDateTime.now();
+				long hours = ChronoUnit.HOURS.between(startTime, now);
+				startTime = startTime.plus(hours, ChronoUnit.HOURS);
+				long minutes = ChronoUnit.MINUTES.between(startTime, now);
+				startTime = startTime.plus(minutes, ChronoUnit.MINUTES);
+				long seconds = ChronoUnit.SECONDS.between(startTime, now);
+				matchStats += "\n" + (hours > 0 ? hours + ":" + String.format("%02d", minutes) : minutes) + ":" + String.format("%02d", seconds);
+				embed.addField(lang.getMessage("leagueoflegends.currentMatch"), matchStats, true);
 			}
 			LocalDateTime revisionDate = LocalDateTime.ofInstant(Instant.ofEpochMilli(summoner.getUpdated().getMillis()), ZoneId.systemDefault());
 			long daysSinceRevision = ChronoUnit.DAYS.between(revisionDate, LocalDateTime.now());
